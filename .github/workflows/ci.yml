@@ -1,49 +1,58 @@
-name: CI Factory (Build and Store)
+name: CI Factory (Build, Store, and Auto-Promote)
 
-# 1. Trigger: When do we wake up?
 on:
   push:
-    branches: [ "main" ] # Only run when we update the main code
-  pull_request:
     branches: [ "main" ]
 
-# 2. Permissions: What can the robot do?
 permissions:
   contents: read
-  packages: write # Necessary to save the Docker image
+  packages: write
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest # The robot's OS
-    
+  build-and-deploy:
+    runs-on: ubuntu-latest
     steps:
-      # Step A: Get the code from GitHub
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Step B: Login to the Warehouse (GHCR)
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Step C: Give the image a name and a tag (Version)
-      # We use the Git SHA (a unique code) so every build has a unique ID.
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=sha,format=long
+          tags: type=sha,format=long
 
-      # Step D: Build and Push!
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+
+      # --- THE HERO STEP: AUTO-PROMOTE ---
+      - name: Update Infra Repo
+        env:
+          INFRA_TOKEN: ${{ secrets.INFRA_TOKEN }}
+          NEW_SHA: ${{ steps.meta.outputs.version }} # This is the sha-xxxx tag
+        run: |
+          # 1. Clone the Infra Repo
+          git clone https://x-access-token:${{ secrets.INFRA_TOKEN }}@github.com/${{ github.repository_owner }}/hero-infra.git
+          cd hero-infra
+
+          # 2. Use 'sed' to find the old image tag and replace it with the new one
+          # Logic: Search for 'image: ghcr.io/rawleyc/my-web-app:sha-' and replace everything after the colon
+          sed -i "s|image: ghcr.io/${{ github.repository }}:sha-.*|image: ghcr.io/${{ github.repository }}:${{ env.NEW_SHA }}|g" manifests/deployment.yaml
+
+          # 3. Commit and Push back to the Infra Repo
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Auto-update image to ${{ env.NEW_SHA }}"
+          git push origin main
