@@ -1,0 +1,21 @@
+{
+  "name": "my-web-app",
+  "version": "1.0.0",
+  "description": "A simple web app for learning Docker multi-stage builds",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}
